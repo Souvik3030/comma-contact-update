@@ -3,10 +3,11 @@
  * 1. CONFIGURATION
  * OUTBOUND permission: contact created, contact updated, contact deleted, lead created
  */
-$rest_url = "https://test.vortexwebre.com/rest/1/4xmt5rq9imvnzhv4/";
+$rest_url = "https://comma.bitrix24.ae/rest/8/ecvxs1hmfnz91kd9/";
 $log_file = __DIR__ . '/webhook_log.txt';
 
-function writeLog($message, $file) {
+function writeLog($message, $file)
+{
     $timestamp = date("Y-m-d H:i:s");
     $log_entry = "[$timestamp] " . (is_array($message) ? print_r($message, true) : $message) . PHP_EOL;
     file_put_contents($file, $log_entry, FILE_APPEND);
@@ -26,17 +27,18 @@ if (!$lead_id) {
 /**
  * Helper function for Bitrix REST API calls
  */
-function callBitrix($method, $params, $url) {
+function callBitrix($method, $params, $url)
+{
     $queryUrl = $url . $method . ".json";
     $queryData = http_build_query($params);
     $options = [
         'http' => [
-            'method'  => 'POST',
-            'header'  => 'Content-type: application/x-www-form-urlencoded',
+            'method' => 'POST',
+            'header' => 'Content-type: application/x-www-form-urlencoded',
             'content' => $queryData,
         ],
     ];
-    $context  = stream_context_create($options);
+    $context = stream_context_create($options);
     $result = file_get_contents($queryUrl, false, $context);
     return json_decode($result, true);
 }
@@ -56,7 +58,7 @@ if ($fields) {
 }
 
 // Helper to format Multi-fields (Phone/Email)
-$formatMultiField = function($items) {
+$formatMultiField = function ($items) {
     $output = [];
     if (is_array($items)) {
         foreach ($items as $item) {
@@ -70,26 +72,25 @@ $formatMultiField = function($items) {
 };
 
 // 4. CREATE THE CONTACT
-// Build the contact name: prefer custom field, fall back to lead's built-in NAME/LAST_NAME/TITLE
-$custom_name  = $fields['UF_CRM_69D377EB8B209'] ?? '';
-$lead_name    = trim(($fields['NAME'] ?? '') . ' ' . ($fields['LAST_NAME'] ?? ''));
-$contact_name = $custom_name ?: ($lead_name ?: ($fields['TITLE'] ?? 'Unknown'));
-
+// Map lead name fields to contact name fields (NAME = First, SECOND_NAME = Middle, LAST_NAME = Last)
 $contact_params = [
     'fields' => [
-        'NAME' => $contact_name,
+        'NAME'        => $fields['NAME'] ?? '',
+        'SECOND_NAME' => $fields['SECOND_NAME'] ?? '',
+        'LAST_NAME'   => $fields['LAST_NAME'] ?? '',
 
+        // Lead PHONE/EMAIL are arrays of {VALUE, VALUE_TYPE} objects
         'EMAIL' => [
             [
-                "VALUE" => $fields['UF_CRM_69D377EB91EC4'][0] ?? '',
-                "VALUE_TYPE" => "WORK"
+                'VALUE'      => $fields['EMAIL'][0]['VALUE'] ?? '',
+                'VALUE_TYPE' => $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK'
             ]
         ],
 
         'PHONE' => [
             [
-                "VALUE" => $fields['UF_CRM_69D377EB973D1'][0] ?? '',
-                "VALUE_TYPE" => "WORK"
+                'VALUE'      => $fields['PHONE'][0]['VALUE'] ?? '',
+                'VALUE_TYPE' => $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK'
             ]
         ]
     ]
@@ -110,28 +111,4 @@ if ($new_contact_id) {
 }
 
 
-/* ================================
- LINK CONTACT TO LEAD
-================================ */
-if ($contact_id) {
-
-    $update = callBitrix(
-        'crm.lead.update',
-        [
-            'id' => $lead_id,
-            'fields' => [
-                'CONTACT_IDS' => [$contact_id]
-            ]
-        ],
-        $rest_url
-    );
-
-    writeLog("Lead Updated With Contact ID: $contact_id", $log_file);
-    writeLog($update, $log_file);
-
-} else {
-
-    writeLog("ERROR: Contact creation failed", $log_file);
-
-}
 ?>
