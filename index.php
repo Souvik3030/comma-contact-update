@@ -3,22 +3,67 @@
  * 1. CONFIGURATION
  */
 $rest_url = "https://test.vortexwebre.com/rest/1/4xmt5rq9imvnzhv4/";
-$log_file = __DIR__ . '/webhook_log.txt';
-function writeLog($message, $file) {
+$logs = [];
+
+function writeLog($message) {
+    global $logs;
+
     $timestamp = date("Y-m-d H:i:s");
-    $log_entry = "[$timestamp] " . (is_array($message) ? print_r($message, true) : $message) . PHP_EOL;
-    file_put_contents($file, $log_entry, FILE_APPEND);
+    $logs[] = [
+        'time' => $timestamp,
+        'message' => $message
+    ];
+}
+
+function respondWithLogs($success, $extra = []) {
+    global $logs;
+
+    header('Content-Type: application/json');
+    echo json_encode(array_merge([
+        'success' => $success,
+        'logs' => $logs
+    ], $extra), JSON_PRETTY_PRINT);
+    exit;
+}
+
+function normalizeMultiField($items) {
+    $output = [];
+
+    if (!is_array($items)) {
+        return $output;
+    }
+
+    foreach ($items as $item) {
+        if (!empty($item['VALUE'])) {
+            $output[] = [
+                'VALUE' => $item['VALUE'],
+                'VALUE_TYPE' => $item['VALUE_TYPE'] ?? 'WORK'
+            ];
+        }
+    }
+
+    return $output;
+}
+
+function firstNonEmptyValue(...$values) {
+    foreach ($values as $value) {
+        if (is_string($value) && trim($value) !== '') {
+            return trim($value);
+        }
+    }
+
+    return '';
 }
 
 // 2. CAPTURE INCOMING WEBHOOK (Only contains ID)
-writeLog("=== INCOMING BITRIX WEBHOOK POST DATA ===", $log_file);
-writeLog($_POST, $log_file);
+writeLog("=== INCOMING BITRIX WEBHOOK POST DATA ===");
+writeLog($_POST);
 
 $lead_id = $_POST['data']['FIELDS']['ID'] ?? null;
 
 if (!$lead_id) {
-    writeLog("ERROR: No Lead ID received. Exiting.", $log_file);
-    exit;
+    writeLog("ERROR: No Lead ID received. Exiting.");
+    respondWithLogs(false);
 }
 
 /**
@@ -27,6 +72,12 @@ if (!$lead_id) {
 function callBitrix($method, $params, $url) {
     $queryUrl = $url . $method . ".json";
     $queryData = http_build_query($params);
+    writeLog("Calling Bitrix API: " . $method);
+    writeLog([
+        'url' => $queryUrl,
+        'params' => $params
+    ]);
+
     $options = [
         'http' => [
             'method'  => 'POST',
@@ -36,7 +87,14 @@ function callBitrix($method, $params, $url) {
     ];
     $context  = stream_context_create($options);
     $result = file_get_contents($queryUrl, false, $context);
-    return json_decode($result, true);
+    $decoded = json_decode($result, true);
+
+    writeLog([
+        'method' => $method,
+        'response' => $decoded
+    ]);
+
+    return $decoded;
 }
 
 // =========================================================================
@@ -46,45 +104,54 @@ $lead_result = callBitrix('crm.lead.get', ['id' => $lead_id], $rest_url);
 $fields = $lead_result['result'] ?? null;
 
 if ($fields) {
-    writeLog("--- FULL EXTRACTED FORM DATA FOR LEAD #$lead_id ---", $log_file);
-    writeLog($fields, $log_file); // THIS WILL LOG NAME, PHONE, EMAIL, ETC.
+    writeLog("--- FULL EXTRACTED FORM DATA FOR LEAD #$lead_id ---");
+    writeLog($fields); // THIS WILL LOG NAME, PHONE, EMAIL, ETC.
 } else {
-    writeLog("ERROR: Could not fetch details for Lead #$lead_id", $log_file);
-    exit;
+    writeLog("ERROR: Could not fetch details for Lead #$lead_id");
+    respondWithLogs(false, ['lead_id' => $lead_id]);
 }
 
-// Helper to format Multi-fields (Phone/Email)
-$formatMultiField = function($items) {
-    $output = [];
-    if (is_array($items)) {
-        foreach ($items as $item) {
-            $output[] = [
-                "VALUE" => $item['VALUE'],
-                "VALUE_TYPE" => $item['VALUE_TYPE']
-            ];
-        }
-    }
-    return $output;
-};
+$lead_name = firstNonEmptyValue(
+    $fields['NAME'] ?? '',
+    $fields['TITLE'] ?? '',
+    $fields['UF_CRM_69D377EB8B209'] ?? ''
+);
+$lead_emails = normalizeMultiField($fields['EMAIL'] ?? []);
+$lead_phones = normalizeMultiField($fields['PHONE'] ?? []);
+
+if (!$lead_emails && !empty($fields['UF_CRM_69D377EB973D1'][0])) {
+    $lead_emails[] = [
+        'VALUE' => $fields['UF_CRM_69D377EB973D1'][0],
+        'VALUE_TYPE' => 'WORK'
+    ];
+}
+
+if (!$lead_phones && !empty($fields['UF_CRM_69D377EB91EC4'][0])) {
+    $lead_phones[] = [
+        'VALUE' => $fields['UF_CRM_69D377EB91EC4'][0],
+        'VALUE_TYPE' => 'WORK'
+    ];
+}
+
+writeLog([
+    'prepared_contact_data' => [
+        'NAME' => $lead_name,
+        'EMAIL' => $lead_emails,
+        'PHONE' => $lead_phones
+    ]
+]);
+
+if ($lead_name === '' && !$lead_emails && !$lead_phones) {
+    writeLog("ERROR: Lead does not contain name, email, or phone. Contact was not created.");
+    respondWithLogs(false, ['lead_id' => $lead_id]);
+}
 
 // 4. CREATE THE CONTACT
 $contact_params = [
     'fields' => [
-        'NAME' => $fields['UF_CRM_69D377EB8B209'] ?? '',
-
-        'EMAIL' => [
-            [
-                "VALUE" => $fields['UF_CRM_69D377EB973D1'][0] ?? '',
-                "VALUE_TYPE" => "WORK"
-            ]
-        ],
-
-        'PHONE' => [
-            [
-                "VALUE" => $fields['UF_CRM_69D377EB91EC4'][0] ?? '',
-                "VALUE_TYPE" => "WORK"
-            ]
-        ]
+        'NAME' => $lead_name,
+        'EMAIL' => $lead_emails,
+        'PHONE' => $lead_phones
     ]
 ];
 
@@ -93,38 +160,23 @@ $new_contact_id = $contact_result['result'] ?? null;
 
 // 5. LINK LEAD TO CONTACT
 if ($new_contact_id) {
-    callBitrix('crm.lead.update', [
+    $lead_update_result = callBitrix('crm.lead.update', [
         'id' => $lead_id,
-        'fields' => ['CONTACT_ID' => $new_contact_id]
+        'fields' => [
+            'CONTACT_ID' => $new_contact_id,
+            'CONTACT_IDS' => [$new_contact_id]
+        ]
     ], $rest_url);
-    writeLog("SUCCESS: Lead #$lead_id linked to Contact #$new_contact_id", $log_file);
+
+    writeLog("SUCCESS: Lead #$lead_id linked to Contact #$new_contact_id");
+    writeLog($lead_update_result);
 } else {
-    writeLog("FAILED to create contact for Lead #$lead_id", $log_file);
+    writeLog("FAILED to create contact for Lead #$lead_id");
+    respondWithLogs(false, ['lead_id' => $lead_id]);
 }
 
 
-/* ================================
- LINK CONTACT TO LEAD
-================================ */
-if ($contact_id) {
-
-    $update = callBitrix(
-        'crm.lead.update',
-        [
-            'id' => $lead_id,
-            'fields' => [
-                'CONTACT_IDS' => [$contact_id]
-            ]
-        ],
-        $rest_url
-    );
-
-    writeLog("Lead Updated With Contact ID: $contact_id", $log_file);
-    writeLog($update, $log_file);
-
-} else {
-
-    writeLog("ERROR: Contact creation failed", $log_file);
-
-}
-?>
+respondWithLogs(true, [
+    'lead_id' => $lead_id,
+    'contact_id' => $new_contact_id
+]);
