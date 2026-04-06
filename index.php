@@ -1,6 +1,7 @@
 <?php
 /**
  * 1. CONFIGURATION
+ * OUTBOUND permission: contact created, contact updated, contact deleted, lead created
  */
 $rest_url = "https://test.vortexwebre.com/rest/1/4xmt5rq9imvnzhv4/";
 $log_file = __DIR__ . '/webhook_log.txt';
@@ -69,9 +70,14 @@ $formatMultiField = function($items) {
 };
 
 // 4. CREATE THE CONTACT
+// Build the contact name: prefer custom field, fall back to lead's built-in NAME/LAST_NAME/TITLE
+$custom_name  = $fields['UF_CRM_69D377EB8B209'] ?? '';
+$lead_name    = trim(($fields['NAME'] ?? '') . ' ' . ($fields['LAST_NAME'] ?? ''));
+$contact_name = $custom_name ?: ($lead_name ?: ($fields['TITLE'] ?? 'Unknown'));
+
 $contact_params = [
     'fields' => [
-        'NAME' => $fields['UF_CRM_69D377EB8B209'] ?? '',
+        'NAME' => $contact_name,
 
         'EMAIL' => [
             [
