@@ -122,6 +122,8 @@ $has_email = $email_field !== null;
 $has_phone = $phone_field !== null;
 
 if (!$has_email && !$has_phone) {
+    $existing_contact_id = $fields['CONTACT_ID'] ?? null;
+
     writeLog("INFO: Skipping contact create/connect - email and phone are both empty for Lead #$lead_id.", $log_file);
     writeLog([
         'email' => $email_value,
@@ -129,14 +131,29 @@ if (!$has_email && !$has_phone) {
         'has_email_flag' => $fields['HAS_EMAIL'] ?? '',
         'has_phone_flag' => $fields['HAS_PHONE'] ?? '',
         'email_array_exists' => isset($fields['EMAIL']),
-        'phone_array_exists' => isset($fields['PHONE'])
+        'phone_array_exists' => isset($fields['PHONE']),
+        'existing_contact_id' => $existing_contact_id
     ], $log_file);
+
+    if ($existing_contact_id) {
+        $unlink_result = callBitrix('crm.lead.update', [
+            'id' => $lead_id,
+            'fields' => [
+                'CONTACT_ID' => 0,
+                'CONTACT_IDS' => []
+            ]
+        ], $rest_url);
+
+        writeLog("INFO: Removed linked Contact #$existing_contact_id from Lead #$lead_id because email and phone are empty.", $log_file);
+        writeLog($unlink_result, $log_file);
+    }
+
     exit;
 }
 
 writeLog("INFO: Contact create allowed - email or phone exists for Lead #$lead_id.", $log_file);
 
-// 4. CREATE THE CONTACT
+// 4. CREATE OR UPDATE THE CONTACT
 // Map lead name fields to contact name fields (NAME = First, SECOND_NAME = Middle, LAST_NAME = Last)
 $contact_params = [
     'fields' => [
@@ -163,6 +180,19 @@ if (trim($phone_value) !== '') {
             'VALUE_TYPE' => $phone_type
         ]
     ];
+}
+
+$existing_contact_id = $fields['CONTACT_ID'] ?? null;
+
+if ($existing_contact_id) {
+    $contact_result = callBitrix('crm.contact.update', [
+        'id' => $existing_contact_id,
+        'fields' => $contact_params['fields']
+    ], $rest_url);
+
+    writeLog("SUCCESS: Existing Contact #$existing_contact_id updated for Lead #$lead_id", $log_file);
+    writeLog($contact_result, $log_file);
+    exit;
 }
 
 $contact_result = callBitrix('crm.contact.add', $contact_params, $rest_url);
