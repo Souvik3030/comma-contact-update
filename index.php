@@ -95,14 +95,18 @@ $email_type = $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK';
 $phone_value = $fields['PHONE'][0]['VALUE'] ?? '';
 $phone_type = $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK';
 
-$has_email_or_phone = hasMeaningfulValue($fields['EMAIL'] ?? [])
-    || hasMeaningfulValue($fields['PHONE'] ?? []);
+$has_email = isset($fields['EMAIL']) && is_array($fields['EMAIL']) && trim($email_value) !== '';
+$has_phone = isset($fields['PHONE']) && is_array($fields['PHONE']) && trim($phone_value) !== '';
 
-if (!$has_email_or_phone) {
+if (!$has_email && !$has_phone) {
     writeLog("INFO: Skipping contact create - email and phone are both empty for Lead #$lead_id.", $log_file);
     writeLog([
         'email' => $email_value,
-        'phone' => $phone_value
+        'phone' => $phone_value,
+        'has_email_flag' => $fields['HAS_EMAIL'] ?? '',
+        'has_phone_flag' => $fields['HAS_PHONE'] ?? '',
+        'email_array_exists' => isset($fields['EMAIL']),
+        'phone_array_exists' => isset($fields['PHONE'])
     ], $log_file);
     exit;
 }
