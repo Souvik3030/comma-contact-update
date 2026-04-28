@@ -71,6 +71,20 @@ $formatMultiField = function ($items) {
     return $output;
 };
 
+$email_value = $fields['EMAIL'][0]['VALUE'] ?? '';
+$email_type = $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK';
+$phone_value = $fields['PHONE'][0]['VALUE'] ?? '';
+$phone_type = $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK';
+
+if (trim($email_value) === '' || trim($phone_value) === '') {
+    writeLog("INFO: Skipping contact update - email or phone is empty for Lead #$lead_id.", $log_file);
+    writeLog([
+        'email' => $email_value,
+        'phone' => $phone_value
+    ], $log_file);
+    exit;
+}
+
 // 4. CREATE THE CONTACT
 // Map lead name fields to contact name fields (NAME = First, SECOND_NAME = Middle, LAST_NAME = Last)
 $contact_params = [
@@ -82,15 +96,15 @@ $contact_params = [
         // Lead PHONE/EMAIL are arrays of {VALUE, VALUE_TYPE} objects
         'EMAIL' => [
             [
-                'VALUE'      => $fields['EMAIL'][0]['VALUE'] ?? '',
-                'VALUE_TYPE' => $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK'
+                'VALUE'      => $email_value,
+                'VALUE_TYPE' => $email_type
             ]
         ],
 
         'PHONE' => [
             [
-                'VALUE'      => $fields['PHONE'][0]['VALUE'] ?? '',
-                'VALUE_TYPE' => $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK'
+                'VALUE'      => $phone_value,
+                'VALUE_TYPE' => $phone_type
             ]
         ]
     ]
