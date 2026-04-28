@@ -3,7 +3,7 @@
  * 1. CONFIGURATION
  * OUTBOUND permission: contact created, contact updated, contact deleted, lead created
  */
-$rest_url = "https://comma.bitrix24.ae/rest/8/ecvxs1hmfnz91kd9/";
+$rest_url = "https://test.vortexwebre.com/rest/1/gng7u58v2pl8wpcf/";
 $log_file = __DIR__ . '/webhook_log.txt';
 
 function writeLog($message, $file) {
