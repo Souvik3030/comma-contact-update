@@ -43,6 +43,25 @@ function callBitrix($method, $params, $url)
     return json_decode($result, true);
 }
 
+function hasMeaningfulValue($value)
+{
+    if (is_array($value)) {
+        if (array_key_exists('VALUE', $value)) {
+            return hasMeaningfulValue($value['VALUE']);
+        }
+
+        foreach ($value as $item) {
+            if (hasMeaningfulValue($item)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    return trim((string)$value) !== '';
+}
+
 // =========================================================================
 // 3. FETCH FULL LEAD DETAILS (This is where the actual form data is)
 // =========================================================================
@@ -76,7 +95,10 @@ $email_type = $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK';
 $phone_value = $fields['PHONE'][0]['VALUE'] ?? '';
 $phone_type = $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK';
 
-if (trim($email_value) === '' && trim($phone_value) === '') {
+$has_email_or_phone = hasMeaningfulValue($fields['EMAIL'] ?? [])
+    || hasMeaningfulValue($fields['PHONE'] ?? []);
+
+if (!$has_email_or_phone) {
     writeLog("INFO: Skipping contact create - email and phone are both empty for Lead #$lead_id.", $log_file);
     writeLog([
         'email' => $email_value,
@@ -91,24 +113,28 @@ $contact_params = [
     'fields' => [
         'NAME'        => $fields['NAME'] ?? '',
         'SECOND_NAME' => $fields['SECOND_NAME'] ?? '',
-        'LAST_NAME'   => $fields['LAST_NAME'] ?? '',
-
-        // Lead PHONE/EMAIL are arrays of {VALUE, VALUE_TYPE} objects
-        'EMAIL' => [
-            [
-                'VALUE'      => $email_value,
-                'VALUE_TYPE' => $email_type
-            ]
-        ],
-
-        'PHONE' => [
-            [
-                'VALUE'      => $phone_value,
-                'VALUE_TYPE' => $phone_type
-            ]
-        ]
+        'LAST_NAME'   => $fields['LAST_NAME'] ?? ''
     ]
 ];
+
+// Lead PHONE/EMAIL are arrays of {VALUE, VALUE_TYPE} objects.
+if (trim($email_value) !== '') {
+    $contact_params['fields']['EMAIL'] = [
+        [
+            'VALUE'      => $email_value,
+            'VALUE_TYPE' => $email_type
+        ]
+    ];
+}
+
+if (trim($phone_value) !== '') {
+    $contact_params['fields']['PHONE'] = [
+        [
+            'VALUE'      => $phone_value,
+            'VALUE_TYPE' => $phone_type
+        ]
+    ];
+}
 
 $contact_result = callBitrix('crm.contact.add', $contact_params, $rest_url);
 $new_contact_id = $contact_result['result'] ?? null;
