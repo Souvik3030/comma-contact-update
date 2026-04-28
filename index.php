@@ -76,8 +76,8 @@ $email_type = $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK';
 $phone_value = $fields['PHONE'][0]['VALUE'] ?? '';
 $phone_type = $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK';
 
-if (trim($email_value) === '' || trim($phone_value) === '') {
-    writeLog("INFO: Skipping contact update - email or phone is empty for Lead #$lead_id.", $log_file);
+if (trim($email_value) === '' && trim($phone_value) === '') {
+    writeLog("INFO: Skipping contact create - email and phone are both empty for Lead #$lead_id.", $log_file);
     writeLog([
         'email' => $email_value,
         'phone' => $phone_value
