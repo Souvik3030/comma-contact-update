@@ -107,7 +107,7 @@ if ($new_contact_id) {
     ], $rest_url);
     writeLog("SUCCESS: Lead #$lead_id linked to Contact #$new_contact_id", $log_file);
 } else {
-    writeLog("FAILED to create contact for Lead #$lead_id", $log_file);
+    writeLog("FAILED to create contact for Lead t #$lead_id", $log_file);
 }
 
 
