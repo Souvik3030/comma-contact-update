@@ -68,6 +68,10 @@ if (!$lead_id) {
     exit;
 }
 
+writeLog("STEP 1.5: Waiting 5 seconds before fetching lead details so Bitrix can finish processing.", $log_file);
+sleep(5);
+writeLog("STEP 1.5 RESULT: Wait finished.", $log_file);
+
 // 2. FETCH LEAD
 writeLog("STEP 2: Fetching full lead details from Bitrix", $log_file);
 $lead_result = callBitrix('crm.lead.get', ['id' => $lead_id], $rest_url);
