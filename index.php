@@ -62,6 +62,26 @@ function hasMeaningfulValue($value)
     return trim((string)$value) !== '';
 }
 
+function getFirstFilledMultiField($items)
+{
+    if (!is_array($items)) {
+        return null;
+    }
+
+    foreach ($items as $item) {
+        $value = $item['VALUE'] ?? '';
+
+        if (trim((string)$value) !== '') {
+            return [
+                'VALUE' => $value,
+                'VALUE_TYPE' => $item['VALUE_TYPE'] ?? 'WORK'
+            ];
+        }
+    }
+
+    return null;
+}
+
 // =========================================================================
 // 3. FETCH FULL LEAD DETAILS (This is where the actual form data is)
 // =========================================================================
@@ -90,16 +110,19 @@ $formatMultiField = function ($items) {
     return $output;
 };
 
-$email_value = $fields['EMAIL'][0]['VALUE'] ?? '';
-$email_type = $fields['EMAIL'][0]['VALUE_TYPE'] ?? 'WORK';
-$phone_value = $fields['PHONE'][0]['VALUE'] ?? '';
-$phone_type = $fields['PHONE'][0]['VALUE_TYPE'] ?? 'WORK';
+$email_field = getFirstFilledMultiField($fields['EMAIL'] ?? []);
+$phone_field = getFirstFilledMultiField($fields['PHONE'] ?? []);
 
-$has_email = isset($fields['EMAIL']) && is_array($fields['EMAIL']) && trim($email_value) !== '';
-$has_phone = isset($fields['PHONE']) && is_array($fields['PHONE']) && trim($phone_value) !== '';
+$email_value = $email_field['VALUE'] ?? '';
+$email_type = $email_field['VALUE_TYPE'] ?? 'WORK';
+$phone_value = $phone_field['VALUE'] ?? '';
+$phone_type = $phone_field['VALUE_TYPE'] ?? 'WORK';
+
+$has_email = $email_field !== null;
+$has_phone = $phone_field !== null;
 
 if (!$has_email && !$has_phone) {
-    writeLog("INFO: Skipping contact create - email and phone are both empty for Lead #$lead_id.", $log_file);
+    writeLog("INFO: Skipping contact create/connect - email and phone are both empty for Lead #$lead_id.", $log_file);
     writeLog([
         'email' => $email_value,
         'phone' => $phone_value,
@@ -110,6 +133,8 @@ if (!$has_email && !$has_phone) {
     ], $log_file);
     exit;
 }
+
+writeLog("INFO: Contact create allowed - email or phone exists for Lead #$lead_id.", $log_file);
 
 // 4. CREATE THE CONTACT
 // Map lead name fields to contact name fields (NAME = First, SECOND_NAME = Middle, LAST_NAME = Last)
